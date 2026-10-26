@@ -1,0 +1,9 @@
+{
+  "appId": "com.chudopuzzle.tablet",
+  "appName": "Чудо-Пазлы",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  }
+}

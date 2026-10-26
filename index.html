@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Чудо-Пазлы: Мастерская Картинок</title>
+    <meta name="description" content="Детская развивающая игра-пазл для планшета: загружай свою картинку или выбирай сказочный сюжет, перемещай и соединяй кусочки пазла со звуковыми эффектами и праздничным салютом победы." />
+    <meta property="og:title" content="Чудо-Пазлы: Мастерская Картинок" />
+    <meta property="og:description" content="Детская развивающая игра-пазл для планшета: загружай свою картинку или выбирай сказочный сюжет, перемещай и соединяй кусочки пазла со звуковыми эффектами и праздничным салютом победы." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Rubik:wght@600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body style="margin:0;padding:0;background-color:#2c1b12;color:#fff8ed;overflow:hidden;">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Automatic fallback for Android APK builders (WebIntoApp, Website2APK, Android Studio WebView)
+      // when index.html from the downloaded ZIP is opened directly without a Vite dev server.
+      (function () {
+        function loadFallbackBundle() {
+          if (window.__CHUDO_PUZZLE_MOUNTED__) return;
+          var css1 = document.createElement('link');
+          css1.rel = 'stylesheet';
+          css1.href = './apk-bundle.css';
+          css1.onerror = function () {
+            var css2 = document.createElement('link');
+            css2.rel = 'stylesheet';
+            css2.href = './public/apk-bundle.css';
+            document.head.appendChild(css2);
+          };
+          document.head.appendChild(css1);
+
+          var s1 = document.createElement('script');
+          s1.src = './apk-bundle.js';
+          s1.onerror = function () {
+            var s2 = document.createElement('script');
+            s2.src = './public/apk-bundle.js';
+            document.body.appendChild(s2);
+          };
+          document.body.appendChild(s1);
+        }
+
+        if (window.location.protocol === 'file:' || window.location.protocol === 'content:') {
+          loadFallbackBundle();
+        } else {
+          window.addEventListener('load', function () {
+            setTimeout(function () {
+              if (!window.__CHUDO_PUZZLE_MOUNTED__) {
+                loadFallbackBundle();
+              }
+            }, 400);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
