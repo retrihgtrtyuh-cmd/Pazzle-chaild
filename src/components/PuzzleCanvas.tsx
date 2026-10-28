@@ -291,9 +291,10 @@ export const PuzzleCanvas: React.FC<PuzzleCanvasProps> = ({
       p.vRot = (Math.random() - 0.5) * 8;
       p.color = CELEBRATION_COLORS[i % CELEBRATION_COLORS.length];
       p.life = 0;
-      p.maxLife = 0.65 + Math.random() * 0.55;
+      p.maxLife = 0.55 + Math.random() * 0.45;
       p.shape = shapes[i % shapes.length];
     }
+    needsRedrawRef.current = true;
   };
 
   useEffect(() => {
@@ -334,9 +335,16 @@ export const PuzzleCanvas: React.FC<PuzzleCanvasProps> = ({
       const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
       lastTime = now;
 
-      const isStaticOverlay =
-        gameStateRef.current === 'title' || gameStateRef.current === 'paused';
-      if (isStaticOverlay && !needsRedrawRef.current) {
+      const hasActiveParticles = particlePoolRef.current.some((p) => p.active);
+      const hasActivePulse = piecesRef.current.some((p) => p.snapPulse > 0);
+      const isDragging = dragStateRef.current.activeGroupId !== null;
+
+      if (
+        !needsRedrawRef.current &&
+        !hasActiveParticles &&
+        !hasActivePulse &&
+        !isDragging
+      ) {
         rafId = requestAnimationFrame(renderFrame);
         return;
       }
@@ -629,22 +637,7 @@ export const PuzzleCanvas: React.FC<PuzzleCanvasProps> = ({
             ctx.restore();
           }
 
-          // 4. Periodic celebratory fireworks during Victory state
-          if (gameStateRef.current === 'gameover') {
-            victoryFireworkTimer += dt;
-            if (victoryFireworkTimer >= 0.55) {
-              victoryFireworkTimer = 0;
-              const fx =
-                b.boardX +
-                b.boardWidth * (0.2 + Math.random() * 0.6);
-              const fy =
-                b.boardY +
-                b.boardHeight * (0.2 + Math.random() * 0.6);
-              spawnBurst(fx, fy, 22);
-            }
-          }
-
-          // 5. Update and render pooled particles (stars & confetti)
+          // 4. Update and render pooled particles (stars & confetti)
           const pool = particlePoolRef.current;
           for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
             const p = pool[i];
@@ -728,6 +721,7 @@ export const PuzzleCanvas: React.FC<PuzzleCanvasProps> = ({
       }
     }
 
+    needsRedrawRef.current = true;
     onPiecesChangeRef.current(snapRes.pieces, {
       moved: didMove,
       snapped: snapRes.snapped,
@@ -777,6 +771,7 @@ export const PuzzleCanvas: React.FC<PuzzleCanvasProps> = ({
       lastY: y,
       hasMoved: false,
     };
+    needsRedrawRef.current = true;
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -809,6 +804,7 @@ export const PuzzleCanvas: React.FC<PuzzleCanvasProps> = ({
       pieceH
     );
     piecesRef.current = moved;
+    needsRedrawRef.current = true;
   };
 
   const handlePointerUpOrCancel = (e: React.PointerEvent<HTMLCanvasElement>) => {

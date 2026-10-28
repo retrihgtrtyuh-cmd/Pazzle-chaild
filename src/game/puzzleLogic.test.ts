@@ -9,7 +9,13 @@ import {
   autoSnapOnePiece,
   isPuzzleComplete,
   getAdaptiveDifficulties,
+  calculateResolutionAdaptiveGrid,
 } from './puzzleLogic';
+import {
+  computeStatsSummary,
+  recordCompletedPuzzleRun,
+} from './statsManager';
+import { isSupportedImagePath, cleanImageTitle } from './archiveLoader';
 
 test('createDeterministicEdges creates flat outer borders and complementary inner tabs', () => {
   const rows = 3;
@@ -147,33 +153,97 @@ test('dragging and locking a non-zero piece first never prevents piece id=0 from
   assert.equal(p0After.isLocked, true);
 });
 
-test('getAdaptiveDifficulties adapts grid rows and cols to portrait, square, and wide aspect ratios across 4 tiers', () => {
-  const squareDiffs = getAdaptiveDifficulties(1.0);
-  assert.equal(squareDiffs.length, 4);
+test('getAdaptiveDifficulties adapts grid rows and cols to portrait, square, wide, and arbitrary resolutions', () => {
+  const squareDiffs = getAdaptiveDifficulties(1.0, 1000, 1000);
+  assert.equal(squareDiffs.length, 5);
   assert.equal(squareDiffs[0].rows, squareDiffs[0].cols);
   assert.equal(squareDiffs[3].rows, squareDiffs[3].cols);
+  assert.equal(squareDiffs[4].id, 'auto-res');
   assert.ok(squareDiffs[3].totalPieces >= 32 && squareDiffs[3].totalPieces <= 48);
 
   // Landscape 16:9 -> more columns than rows on every tier
-  const wideDiffs = getAdaptiveDifficulties(16 / 9);
+  const wideDiffs = getAdaptiveDifficulties(16 / 9, 1920, 1080);
   for (const tier of wideDiffs) {
     assert.ok(tier.cols >= tier.rows, `Expected cols >= rows for 16:9, got ${tier.cols}x${tier.rows}`);
   }
 
   // Portrait 3:4 -> exact transpose of 4:3 (more rows than columns)
-  const portraitDiffs = getAdaptiveDifficulties(3 / 4);
-  const landscapeDiffs = getAdaptiveDifficulties(4 / 3);
+  const portraitDiffs = getAdaptiveDifficulties(3 / 4, 900, 1200);
+  const landscapeDiffs = getAdaptiveDifficulties(4 / 3, 1200, 900);
   for (let i = 0; i < 4; i++) {
     assert.equal(portraitDiffs[i].rows, landscapeDiffs[i].cols);
     assert.equal(portraitDiffs[i].cols, landscapeDiffs[i].rows);
   }
 
-  // Workspace bounds preserve aspect ratio of portrait and wide images
+  // Resolution adaptation: tiny pixel-art image (160x120) vs high-res image (2400x1800)
+  const tinyGrid = calculateResolutionAdaptiveGrid(160, 120);
+  const highResGrid = calculateResolutionAdaptiveGrid(2400, 1800);
+  assert.ok(tinyGrid.rows * tinyGrid.cols < highResGrid.rows * highResGrid.cols);
+
+  // Workspace bounds preserve aspect ratio of portrait and wide images without strict restriction
   const portraitBounds = calculateWorkspaceBounds(1440, 900, 0.75);
   assert.ok(portraitBounds.boardHeight > portraitBounds.boardWidth);
   assert.ok(
     Math.abs(portraitBounds.boardWidth / portraitBounds.boardHeight - 0.75) < 0.02
   );
 });
+
+test('statsManager computes best time and average time grouped by exact piece count and overall', () => {
+  let runs: any[] = [];
+
+  // Record two 6-piece runs (20s and 10s -> best=10s, avg=15s) and one 12-piece run (34s)
+  const r1 = recordCompletedPuzzleRun(runs, {
+    totalPieces: 6,
+    gridLabel: '3×2',
+    clearTimeSec: 20,
+    movesCount: 8,
+    artworkTitle: 'Лесная Поляна',
+    imageResolution: '480×360',
+  });
+  runs = r1.runs;
+  assert.equal(r1.result.isNewBestForPieceCount, true);
+
+  const r2 = recordCompletedPuzzleRun(runs, {
+    totalPieces: 6,
+    gridLabel: '3×2',
+    clearTimeSec: 10,
+    movesCount: 6,
+    artworkTitle: 'Космо-Динозаврик',
+    imageResolution: '600×800',
+  });
+  runs = r2.runs;
+  assert.equal(r2.result.isNewBestForPieceCount, true);
+  assert.equal(r2.result.pieceStats.bestTimeSec, 10);
+  assert.equal(r2.result.pieceStats.avgTimeSec, 15);
+  assert.equal(r2.result.pieceStats.completedCount, 2);
+
+  const r3 = recordCompletedPuzzleRun(runs, {
+    totalPieces: 12,
+    gridLabel: '4×3',
+    clearTimeSec: 33,
+    movesCount: 15,
+    artworkTitle: 'Чудо-Паровозик',
+    imageResolution: '960×540',
+  });
+  runs = r3.runs;
+  const summary = computeStatsSummary(runs);
+  assert.equal(summary.totalCompleted, 3);
+  assert.equal(summary.overallBestTimeSec, 10);
+  assert.equal(summary.overallAvgTimeSec, 21); // (20 + 10 + 33) / 3 = 21
+  assert.equal(summary.byPieceCount[6].bestTimeSec, 10);
+  assert.equal(summary.byPieceCount[6].avgTimeSec, 15);
+  assert.equal(summary.byPieceCount[12].bestTimeSec, 33);
+  assert.equal(summary.byPieceCount[12].avgTimeSec, 33);
+});
+
+test('archiveLoader filters valid image paths inside ZIP and cleans Russian filenames', () => {
+  assert.equal(isSupportedImagePath('folder/01_Лисёнок.jpg'), true);
+  assert.equal(isSupportedImagePath('nested/art.webp'), true);
+  assert.equal(isSupportedImagePath('__MACOSX/._01_Лисёнок.jpg'), false);
+  assert.equal(isSupportedImagePath('.DS_Store'), false);
+  assert.equal(isSupportedImagePath('readme.txt'), false);
+  assert.equal(cleanImageTitle('albums/01_Лесная_Поляна.png'), '01 Лесная Поляна');
+});
+
 
 

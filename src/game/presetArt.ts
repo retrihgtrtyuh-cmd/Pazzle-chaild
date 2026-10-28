@@ -722,33 +722,37 @@ export function renderPresetToCanvas(
 }
 
 /**
- * Preserves the exact aspect ratio and full uncropped frame of any user-uploaded image,
- * scaling its resolution adaptively (up to maxDimension along the longer edge) for crisp tablet rendering.
+ * Preserves the exact aspect ratio and native resolution of any user-uploaded image
+ * without strict resolution constraints (supports small pixel art, standard images,
+ * and high-res photos up to safe WebGL/Canvas hardware limits).
  */
 export function renderImageToCanvas(
   img: HTMLImageElement,
-  maxDimension = 1500
+  maxHardwareDimension = 4096
 ): HTMLCanvasElement {
-  const srcW = Math.max(1, img.naturalWidth || img.width || 1024);
-  const srcH = Math.max(1, img.naturalHeight || img.height || 768);
+  const srcW = Math.max(1, img.naturalWidth || img.width || 640);
+  const srcH = Math.max(1, img.naturalHeight || img.height || 480);
 
   const longest = Math.max(srcW, srcH);
-  const scale =
-    longest > maxDimension
-      ? maxDimension / longest
-      : longest < 640
-      ? 640 / longest
-      : 1;
+  const scale = longest > maxHardwareDimension ? maxHardwareDimension / longest : 1;
 
-  const targetW = Math.max(240, Math.round(srcW * scale));
-  const targetH = Math.max(240, Math.round(srcH * scale));
+  const targetW = Math.max(1, Math.round(srcW * scale));
+  const targetH = Math.max(1, Math.round(srcH * scale));
 
   const canvas = document.createElement('canvas');
   canvas.width = targetW;
   canvas.height = targetH;
   const ctx = canvas.getContext('2d')!;
 
+  if (longest < 300) {
+    ctx.imageSmoothingEnabled = false;
+  } else {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+  }
+
   ctx.drawImage(img, 0, 0, srcW, srcH, 0, 0, targetW, targetH);
   return canvas;
 }
+
 

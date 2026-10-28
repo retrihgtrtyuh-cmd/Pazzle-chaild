@@ -51,6 +51,8 @@ export interface AdaptiveDifficultyOption {
   totalPieces: number;
   label: string;
   shortGridLabel: string;
+  piecePixelWidth: number;
+  piecePixelHeight: number;
 }
 
 interface DifficultyTierSpec {
@@ -70,8 +72,8 @@ export const DIFFICULTY_TIERS: DifficultyTierSpec[] = [
     targetCount: 5,
     minCount: 4,
     maxCount: 6,
-    minDim: 2,
-    maxDim: 3,
+    minDim: 1,
+    maxDim: 4,
   },
   {
     id: 'easy',
@@ -80,7 +82,7 @@ export const DIFFICULTY_TIERS: DifficultyTierSpec[] = [
     minCount: 8,
     maxCount: 14,
     minDim: 2,
-    maxDim: 5,
+    maxDim: 6,
   },
   {
     id: 'medium',
@@ -88,8 +90,8 @@ export const DIFFICULTY_TIERS: DifficultyTierSpec[] = [
     targetCount: 20,
     minCount: 15,
     maxCount: 25,
-    minDim: 3,
-    maxDim: 7,
+    minDim: 2,
+    maxDim: 8,
   },
   {
     id: 'expert',
@@ -97,8 +99,8 @@ export const DIFFICULTY_TIERS: DifficultyTierSpec[] = [
     targetCount: 40,
     minCount: 32,
     maxCount: 48,
-    minDim: 4,
-    maxDim: 9,
+    minDim: 3,
+    maxDim: 12,
   },
 ];
 
@@ -129,14 +131,20 @@ export function calculateAdaptiveGrid(
   imageAspect: number,
   tierIndex: number
 ): { rows: number; cols: number } {
-  const safeAspect = Math.max(0.25, Math.min(4.0, Number.isFinite(imageAspect) && imageAspect > 0 ? imageAspect : 4 / 3));
+  const safeAspect = Math.max(
+    0.12,
+    Math.min(
+      8.0,
+      Number.isFinite(imageAspect) && imageAspect > 0 ? imageAspect : 4 / 3
+    )
+  );
   const tier =
     DIFFICULTY_TIERS[
       Math.max(0, Math.min(DIFFICULTY_TIERS.length - 1, tierIndex))
     ];
 
-  let bestRows = tier.minDim;
-  let bestCols = tier.minDim;
+  let bestRows = Math.max(2, tier.minDim);
+  let bestCols = Math.max(2, tier.minDim);
   let bestScore = Number.POSITIVE_INFINITY;
 
   for (let r = tier.minDim; r <= tier.maxDim; r++) {
@@ -167,28 +175,110 @@ export function calculateAdaptiveGrid(
 }
 
 /**
- * Returns all 4 adaptive difficulty options tailored to the given image aspect ratio.
+ * Automatically calculates an optimal (rows, cols) puzzle grid directly from any image's
+ * pixel resolution (width × height) without strict resolution restrictions.
+ * Small images get fewer, larger pieces; high-resolution images get more pieces, keeping pieces ~square.
+ */
+export function calculateResolutionAdaptiveGrid(
+  imageWidth: number,
+  imageHeight: number
+): { rows: number; cols: number } {
+  const w = Math.max(1, Number.isFinite(imageWidth) ? imageWidth : 800);
+  const h = Math.max(1, Number.isFinite(imageHeight) ? imageHeight : 600);
+  const aspect = w / h;
+  const megapixels = (w * h) / 1_000_000;
+
+  // Determine ideal target piece count smoothly from pixel resolution (between 4 and 48 pieces)
+  let targetPieces = 12;
+  if (megapixels < 0.08) {
+    targetPieces = 4;
+  } else if (megapixels < 0.25) {
+    targetPieces = 6;
+  } else if (megapixels < 0.55) {
+    targetPieces = 12;
+  } else if (megapixels < 1.1) {
+    targetPieces = 20;
+  } else if (megapixels < 2.0) {
+    targetPieces = 30;
+  } else {
+    targetPieces = 42;
+  }
+
+  let bestRows = 2;
+  let bestCols = 2;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (let r = 1; r <= 12; r++) {
+    for (let c = 1; c <= 12; c++) {
+      const total = r * c;
+      if (total < 4 || total > 48) continue;
+      if (aspect >= 1.08 && c < r) continue;
+      if (aspect <= 0.92 && r < c) continue;
+
+      const pieceAspect = aspect * (r / c);
+      const squarenessError = Math.abs(Math.log(pieceAspect));
+      const countError = (Math.abs(total - targetPieces) / targetPieces) * 0.35;
+      const score = squarenessError + countError;
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestRows = r;
+        bestCols = c;
+      }
+    }
+  }
+
+  return { rows: bestRows, cols: bestCols };
+}
+
+/**
+ * Returns adaptive difficulty options tailored to the given image aspect ratio and resolution (width × height),
+ * including the 4 kid-friendly tiers plus an automatic resolution-based option ('auto-res').
  */
 export function getAdaptiveDifficulties(
-  imageAspect: number
+  imageAspect: number,
+  imageWidth = 1200,
+  imageHeight = 900
 ): AdaptiveDifficultyOption[] {
-  const seenTotals = new Set<number>();
+  const safeW = Math.max(1, Math.round(imageWidth));
+  const safeH = Math.max(1, Math.round(imageHeight));
 
-  return DIFFICULTY_TIERS.map((tier, idx) => {
-    const { rows, cols } = calculateAdaptiveGrid(imageAspect, idx);
-    const totalPieces = rows * cols;
-    seenTotals.add(totalPieces);
-    const shortGridLabel = `${cols}×${rows}`;
-    return {
-      id: tier.id,
-      badge: tier.badge,
-      rows,
-      cols,
-      totalPieces,
-      label: `${formatPieceCountRu(totalPieces)} (${shortGridLabel})`,
-      shortGridLabel,
-    };
+  const tierOptions: AdaptiveDifficultyOption[] = DIFFICULTY_TIERS.map(
+    (tier, idx) => {
+      const { rows, cols } = calculateAdaptiveGrid(imageAspect, idx);
+      const totalPieces = rows * cols;
+      const shortGridLabel = `${cols}×${rows}`;
+      return {
+        id: tier.id,
+        badge: tier.badge,
+        rows,
+        cols,
+        totalPieces,
+        label: `${formatPieceCountRu(totalPieces)} (${shortGridLabel})`,
+        shortGridLabel,
+        piecePixelWidth: Math.max(1, Math.round(safeW / cols)),
+        piecePixelHeight: Math.max(1, Math.round(safeH / rows)),
+      };
+    }
+  );
+
+  const autoGrid = calculateResolutionAdaptiveGrid(safeW, safeH);
+  const autoTotal = autoGrid.rows * autoGrid.cols;
+  const autoShort = `${autoGrid.cols}×${autoGrid.rows}`;
+
+  tierOptions.push({
+    id: 'auto-res',
+    badge: 'Авто PX',
+    rows: autoGrid.rows,
+    cols: autoGrid.cols,
+    totalPieces: autoTotal,
+    label: `${formatPieceCountRu(autoTotal)} (${autoShort})`,
+    shortGridLabel: autoShort,
+    piecePixelWidth: Math.max(1, Math.round(safeW / autoGrid.cols)),
+    piecePixelHeight: Math.max(1, Math.round(safeH / autoGrid.rows)),
   });
+
+  return tierOptions;
 }
 
 export function createSeededRng(seed: number): () => number {
@@ -233,7 +323,7 @@ export function createDeterministicEdges(
 
 /**
  * Computes workspace layout for a given viewport size and exact image aspect ratio (width / height).
- * Preserves the exact aspect ratio of the image without cropping while leaving left and right trays.
+ * Preserves the exact aspect ratio of any image without strict restrictions while leaving left and right trays.
  */
 export function calculateWorkspaceBounds(
   viewportWidth: number,
@@ -249,15 +339,15 @@ export function calculateWorkspaceBounds(
     Number.isFinite(viewportHeight) && viewportHeight > 0 ? viewportHeight : 768
   );
   const safeAspect = Math.max(
-    0.35,
-    Math.min(2.8, Number.isFinite(aspect) && aspect > 0 ? aspect : 4 / 3)
+    0.15,
+    Math.min(6.0, Number.isFinite(aspect) && aspect > 0 ? aspect : 4 / 3)
   );
 
   const safeTop = 86;
   const safeBottom = 28;
   const availH = Math.max(200, safeH - safeTop - safeBottom);
-  const maxBoardW = Math.max(220, safeW * 0.45);
-  const maxBoardH = Math.max(180, availH * 0.8);
+  const maxBoardW = Math.max(200, safeW * 0.46);
+  const maxBoardH = Math.max(160, availH * 0.82);
 
   let boardWidth = maxBoardW;
   let boardHeight = boardWidth / safeAspect;
@@ -267,8 +357,8 @@ export function calculateWorkspaceBounds(
     boardWidth = boardHeight * safeAspect;
   }
 
-  boardWidth = Math.round(boardWidth);
-  boardHeight = Math.round(boardHeight);
+  boardWidth = Math.max(80, Math.round(boardWidth));
+  boardHeight = Math.max(80, Math.round(boardHeight));
 
   const boardX = Math.round((safeW - boardWidth) / 2);
   const boardY = Math.round(safeTop + (availH - boardHeight) / 2);
